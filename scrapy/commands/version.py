@@ -1,38 +1,36 @@
-import sys
-import platform
-
-import twisted
+import argparse
+from typing import Any, ClassVar
 
 import scrapy
-from scrapy.command import ScrapyCommand
+from scrapy.commands import ScrapyCommand
+from scrapy.utils._versions import get_versions
+
 
 class Command(ScrapyCommand):
+    requires_crawler_process = False
+    default_settings: ClassVar[dict[str, Any]] = {"LOG_ENABLED": False}
 
-    def syntax(self):
+    def syntax(self) -> str:
         return "[-v]"
 
-    def short_desc(self):
+    def short_desc(self) -> str:
         return "Print Scrapy version"
 
-    def add_options(self, parser):
-        ScrapyCommand.add_options(self, parser)
-        parser.add_option("--verbose", "-v", dest="verbose", action="store_true",
-            help="also display twisted/python/platform info (useful for bug reports)")
+    def add_options(self, parser: argparse.ArgumentParser) -> None:
+        super().add_options(parser)
+        parser.add_argument(
+            "--verbose",
+            "-v",
+            dest="verbose",
+            action="store_true",
+            help="also display twisted/python/platform info (useful for bug reports)",
+        )
 
-    def run(self, args, opts):
+    def run(self, args: list[str], opts: argparse.Namespace) -> None:
         if opts.verbose:
-            try:
-                import lxml.etree
-            except ImportError:
-                lxml_version = libxml2_version = "(lxml not available)"
-            else:
-                lxml_version = ".".join(map(str, lxml.etree.LXML_VERSION))
-                libxml2_version = ".".join(map(str, lxml.etree.LIBXML_VERSION))
-            print "Scrapy  : %s" % scrapy.__version__
-            print "lxml    : %s" % lxml_version
-            print "libxml2 : %s" % libxml2_version
-            print "Twisted : %s" % twisted.version.short()
-            print "Python  : %s" % sys.version.replace("\n", "- ")
-            print "Platform: %s" % platform.platform()
+            versions = get_versions()
+            width = max(len(n) for (n, _) in versions)
+            for name, version in versions:
+                print(f"{name:<{width}} : {version}")
         else:
-            print "Scrapy %s" % scrapy.__version__
+            print(f"Scrapy {scrapy.__version__}")

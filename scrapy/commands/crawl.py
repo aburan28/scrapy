@@ -1,45 +1,32 @@
-from scrapy.command import ScrapyCommand
-from scrapy.utils.conf import arglist_to_dict
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from scrapy.commands import BaseRunSpiderCommand
 from scrapy.exceptions import UsageError
 
-class Command(ScrapyCommand):
+if TYPE_CHECKING:
+    import argparse
+    from collections.abc import Iterable
 
+
+class Command(BaseRunSpiderCommand):
     requires_project = True
 
-    def syntax(self):
+    def syntax(self) -> str:
         return "[options] <spider>"
 
-    def short_desc(self):
-        return "Start crawling from a spider or URL"
+    def short_desc(self) -> str:
+        return "Run a spider of the current project, by name"
 
-    def add_options(self, parser):
-        ScrapyCommand.add_options(self, parser)
-        parser.add_option("-a", dest="spargs", action="append", default=[], metavar="NAME=VALUE", \
-            help="set spider argument (may be repeated)")
-        parser.add_option("-o", "--output", metavar="FILE", \
-            help="dump scraped items into FILE (use - for stdout)")
-        parser.add_option("-t", "--output-format", metavar="FORMAT", default="jsonlines", \
-            help="format to use for dumping items with -o (default: %default)")
+    def complete_argument(self, args: list[str]) -> Iterable[str]:
+        return () if args else self._spider_names()
 
-    def process_options(self, args, opts):
-        ScrapyCommand.process_options(self, args, opts)
-        try:
-            opts.spargs = arglist_to_dict(opts.spargs)
-        except ValueError:
-            raise UsageError("Invalid -a value, use -a NAME=VALUE", print_help=False)
-        if opts.output:
-            if opts.output == '-':
-                self.settings.overrides['FEED_URI'] = 'stdout:'
-            else:
-                self.settings.overrides['FEED_URI'] = opts.output
-            self.settings.overrides['FEED_FORMAT'] = opts.output_format
-
-    def run(self, args, opts):
+    def run(self, args: list[str], opts: argparse.Namespace) -> None:
         if len(args) < 1:
-            raise UsageError()
-        elif len(args) > 1:
-            raise UsageError("running 'scrapy crawl' with more than one spider is no longer supported")
-        spname = args[0]
-        spider = self.crawler.spiders.create(spname, **opts.spargs)
-        self.crawler.crawl(spider)
-        self.crawler.start()
+            raise UsageError
+        if len(args) > 1:
+            raise UsageError(
+                "running 'scrapy crawl' with more than one spider is not supported"
+            )
+        self._run_crawler(args[0], opts)

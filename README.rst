@@ -1,64 +1,54 @@
-======
-Scrapy
-======
+|logo|
 
-.. image:: https://secure.travis-ci.org/scrapy/scrapy.png?branch=master
-   :target: http://travis-ci.org/scrapy/scrapy
+.. |logo| image:: https://raw.githubusercontent.com/scrapy/scrapy/master/docs/_static/logo.svg
+   :target: https://scrapy.org
+   :alt: Scrapy
+   :width: 480px
 
-Overview
-========
+|version| |python_version| |tests| |coverage| |conda| |deepwiki|
 
-Scrapy is a fast high-level screen scraping and web crawling framework, used to
-crawl websites and extract structured data from their pages. It can be used for
-a wide range of purposes, from data mining to monitoring and automated testing.
+.. |version| image:: https://img.shields.io/pypi/v/Scrapy.svg
+   :target: https://pypi.org/pypi/Scrapy
+   :alt: PyPI Version
 
-For more information including a list of features check the Scrapy homepage at:
-http://scrapy.org
+.. |python_version| image:: https://img.shields.io/pypi/pyversions/Scrapy.svg
+   :target: https://pypi.org/pypi/Scrapy
+   :alt: Supported Python Versions
 
-Requirements
-============
+.. |tests| image:: https://img.shields.io/github/check-runs/scrapy/scrapy/master?label=tests
+   :target: https://github.com/scrapy/scrapy/actions?query=branch%3Amaster
+   :alt: Tests
 
-* Python 2.6 or up
-* Works on Linux, Windows, Mac OSX, BSD
+.. |coverage| image:: https://img.shields.io/codecov/c/github/scrapy/scrapy/master.svg
+   :target: https://codecov.io/github/scrapy/scrapy?branch=master
+   :alt: Coverage report
 
-Install
-=======
+.. |conda| image:: https://anaconda.org/conda-forge/scrapy/badges/version.svg
+   :target: https://anaconda.org/conda-forge/scrapy
+   :alt: Conda Version
 
-The quick way::
+.. |deepwiki| image:: https://deepwiki.com/badge.svg
+   :target: https://deepwiki.com/scrapy/scrapy
+   :alt: Ask DeepWiki
+
+Scrapy_ is a web scraping framework to extract structured data from websites.
+It is cross-platform, and requires Python 3.11+. It is maintained by Zyte_
+(formerly Scrapinghub) and `many other contributors`_.
+
+.. _many other contributors: https://github.com/scrapy/scrapy/graphs/contributors
+.. _Scrapy: https://scrapy.org/
+.. _Zyte: https://www.zyte.com/
+
+Install with:
+
+.. code:: bash
 
     pip install scrapy
 
-For more details see the install section in the documentation:
-http://doc.scrapy.org/en/latest/intro/install.html
+And follow the documentation_ to learn how to use it.
 
-Releases
-========
+.. _documentation: https://docs.scrapy.org/en/latest/
 
-You can download the latest stable and development releases from:
-http://scrapy.org/download/
+If you wish to contribute, see Contributing_.
 
-Documentation
-=============
-
-Documentation is available online at http://doc.scrapy.org/ and in the ``docs``
-directory.
-
-Community (blog, twitter, mail list, IRC)
-=========================================
-
-See http://scrapy.org/community/
-
-Contributing
-============
-
-See http://doc.scrapy.org/en/latest/contributing.html
-
-Companies using Scrapy
-======================
-
-See http://scrapy.org/companies/
-
-Commercial Support
-==================
-
-See http://scrapy.org/support/
+.. _Contributing: https://docs.scrapy.org/en/master/contributing.html

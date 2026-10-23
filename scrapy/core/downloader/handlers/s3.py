@@ -1,62 +1,83 @@
-from scrapy import optional_features
-from scrapy.exceptions import NotConfigured
+from __future__ import annotations
+
+import warnings
+from typing import TYPE_CHECKING
+
+from scrapy.core.downloader.handlers.base import BaseDownloadHandler
+from scrapy.exceptions import NotConfigured, ScrapyDeprecationWarning
+from scrapy.utils.boto import is_botocore_available
 from scrapy.utils.httpobj import urlparse_cached
-from .http import HttpDownloadHandler
+from scrapy.utils.misc import build_from_crawler, load_object
 
-try:
-    from boto.s3.connection import S3Connection
-except ImportError:
-    S3Connection = object
-
-class _v19_S3Connection(S3Connection):
-    """A dummy S3Connection wrapper that doesn't do any syncronous download"""
-    def _mexe(self, method, bucket, key, headers, *args, **kwargs):
-        return headers
-
-class _v20_S3Connection(S3Connection):
-    """A dummy S3Connection wrapper that doesn't do any syncronous download"""
-    def _mexe(self, http_request, *args):
-        http_request.authorize(connection=self)
-        return http_request.headers
-
-try:
-    import boto.auth
-except ImportError:
-    _S3Connection = _v19_S3Connection
-else:
-    _S3Connection = _v20_S3Connection
+if TYPE_CHECKING:
+    from scrapy import Request
+    from scrapy.crawler import Crawler
+    from scrapy.http import Response
 
 
-class S3DownloadHandler(object):
+class S3DownloadHandler(BaseDownloadHandler):
+    lazy = True
 
-    def __init__(self, settings, aws_access_key_id=None, aws_secret_access_key=None, \
-            httpdownloadhandler=HttpDownloadHandler):
-        if 'boto' not in optional_features:
-            raise NotConfigured("missing boto library")
+    def __init__(self, crawler: Crawler):
+        if not is_botocore_available():
+            raise NotConfigured("missing botocore library")
 
-        if not aws_access_key_id:
-            aws_access_key_id = settings['AWS_ACCESS_KEY_ID']
-        if not aws_secret_access_key:
-            aws_secret_access_key = settings['AWS_SECRET_ACCESS_KEY']
+        super().__init__(crawler)
+        aws_access_key_id = crawler.settings["AWS_ACCESS_KEY_ID"]
+        aws_secret_access_key = crawler.settings["AWS_SECRET_ACCESS_KEY"]
+        aws_session_token = crawler.settings["AWS_SESSION_TOKEN"]
+        self.anon = not aws_access_key_id and not aws_secret_access_key
+        self._signer = None
+        if not self.anon:
+            import botocore.auth  # noqa: PLC0415
+            import botocore.credentials  # noqa: PLC0415
 
-        try:
-            self.conn = _S3Connection(aws_access_key_id, aws_secret_access_key)
-        except Exception, ex:
-            raise NotConfigured(str(ex))
-        self._download_http = httpdownloadhandler(settings).download_request
+            SignerCls = botocore.auth.AUTH_TYPE_MAPS["s3"]
+            # botocore.auth.BaseSigner doesn't have an __init__() with args, only subclasses do
+            self._signer = SignerCls(
+                botocore.credentials.Credentials(  # type: ignore[call-arg]
+                    aws_access_key_id, aws_secret_access_key, aws_session_token
+                )
+            )
 
-    def download_request(self, request, spider):
+        _http_handler: BaseDownloadHandler = build_from_crawler(
+            load_object(crawler.settings.getwithbase("DOWNLOAD_HANDLERS")["https"]),
+            crawler,
+        )
+        self._download_http = _http_handler.download_request
+
+    async def download_request(self, request: Request) -> Response:
         p = urlparse_cached(request)
-        scheme = 'https' if request.meta.get('is_secure') else 'http'
+        if request.meta.get("is_secure") is False:
+            warnings.warn(
+                "Passing is_secure=False for s3:// requests is deprecated."
+                " In future Scrapy releases this flag will be ignored.",
+                ScrapyDeprecationWarning,
+                stacklevel=2,
+            )
+            scheme = "http"
+        else:
+            scheme = "https"
         bucket = p.hostname
-        path = p.path + '?' + p.query if p.query else p.path
-        url = '%s://%s.s3.amazonaws.com%s' % (scheme, bucket, path)
-        signed_headers = self.conn.make_request(
+        path = p.path + "?" + p.query if p.query else p.path
+        url = f"{scheme}://{bucket}.s3.amazonaws.com{path}"
+        if self.anon:
+            request = request.replace(url=url)
+        else:
+            import botocore.awsrequest  # noqa: PLC0415
+
+            # AWSRequest takes a mapping, so values of the same header are
+            # joined with commas.
+            headers: dict[str, list[str]] = {}
+            for name, value in request.headers.to_tuple_list():
+                headers.setdefault(name, []).append(value)
+            awsrequest = botocore.awsrequest.AWSRequest(
                 method=request.method,
-                bucket=bucket,
-                key=p.path,
-                query_args=p.query,
-                headers=request.headers,
-                data=request.body)
-        httpreq = request.replace(url=url, headers=signed_headers)
-        return self._download_http(httpreq, spider)
+                url=f"{scheme}://s3.amazonaws.com/{bucket}{path}",
+                headers={name: ",".join(values) for name, values in headers.items()},
+                data=request.body,
+            )
+            assert self._signer
+            self._signer.add_auth(awsrequest)
+            request = request.replace(url=url, headers=awsrequest.headers.items())
+        return await self._download_http(request)

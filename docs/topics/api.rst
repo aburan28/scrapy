@@ -4,8 +4,6 @@
 Core API
 ========
 
-.. versionadded:: 0.15
-
 This section documents the Scrapy core API, and it's intended for developers of
 extensions and middlewares.
 
@@ -14,24 +12,41 @@ extensions and middlewares.
 Crawler API
 ===========
 
-The main entry point to Scrapy API is the :class:`~scrapy.crawler.Crawler`
-object, passed to extensions through the ``from_crawler`` class method. This
-object provides access to all Scrapy core components, and it's the only way for
-extensions to access them and hook their functionality into Scrapy.
+The main entry point to the Scrapy API is the :class:`~scrapy.crawler.Crawler`
+object, which :ref:`components <topics-components>` can :ref:`get for
+initialization <from-crawler>`. It provides access to all Scrapy core
+components, and it is the only way for components to access them and hook their
+functionality into Scrapy.
 
 .. module:: scrapy.crawler
-   :synopsis: The Scrapy crawler
 
 The Extension Manager is responsible for loading and keeping track of installed
-extensions and it's configured through the :setting:`EXTENSIONS` setting which
-contains a dictionary of all available extensions and their order similar to
-how you :ref:`configure the downloader middlewares
+extensions, and it's configured through the :setting:`EXTENSIONS` setting,
+which contains a dictionary of all available extensions and their order similar
+to how you :ref:`configure the downloader middlewares
 <topics-downloader-middleware-setting>`.
 
-.. class:: Crawler(settings)
+.. autoclass:: Crawler
+    :members: get_addon, get_downloader_middleware, get_extension,
+        get_item_pipeline, get_spider_middleware
 
     The Crawler object must be instantiated with a
+    :class:`scrapy.Spider` subclass and a
     :class:`scrapy.settings.Settings` object.
+
+    The :attr:`engine`, :attr:`extensions`, :attr:`logformatter`,
+    :attr:`request_fingerprinter` and :attr:`stats` attributes get their value
+    when the crawl starts, and raise :exc:`RuntimeError` when read before that.
+
+    .. versionchanged:: 2.18.0
+        Those attributes used to be ``None`` before getting their value.
+
+    .. attribute:: request_fingerprinter
+
+        The request fingerprint builder of this crawler.
+
+        This is used from extensions and middlewares to build short, unique
+        identifiers for requests. See :ref:`request-fingerprints`.
 
     .. attribute:: settings
 
@@ -64,7 +79,9 @@ how you :ref:`configure the downloader middlewares
 
         For an introduction on stats collection see :ref:`topics-stats`.
 
-        For the API see :class:`~scrapy.statscol.StatsCollector` class.
+        For the API see :class:`~scrapy.statscollectors.StatsCollector` class.
+
+    .. autoattribute:: logformatter
 
     .. attribute:: extensions
 
@@ -75,165 +92,107 @@ how you :ref:`configure the downloader middlewares
         For an introduction on extensions and a list of available extensions on
         Scrapy see :ref:`topics-extensions`.
 
-    .. attribute:: spiders
+    .. autoattribute:: engine
 
-        The spider manager which takes care of loading and instantiating
-        spiders.
+    .. attribute:: spider
 
-        Most extensions won't need to access this attribute.
+        Spider currently being crawled. This is an instance of the spider class
+        provided while constructing the crawler, and it is created after the
+        arguments given in the :meth:`crawl` method.
 
-    .. attribute:: engine
+    .. automethod:: crawl_async
 
-        The execution engine, which coordinates the core crawling logic
-        between the scheduler, downloader and spiders.
+    .. automethod:: crawl
 
-        Some extension may want to access the Scrapy engine, to modify inspect
-        or modify the downloader and scheduler behaviour, although this is an
-        advanced use and this API is not yet stable.
+    .. automethod:: stop_async
 
-    .. method:: configure()
+    .. automethod:: stop
 
-        Configure the crawler.
+.. autoclass:: AsyncCrawlerRunner
+   :members:
 
-        This loads extensions, middlewares and spiders, leaving the crawler
-        ready to be started. It also configures the execution engine.
+.. autoclass:: CrawlerRunner
+   :members:
 
-    .. method:: start()
+.. autoclass:: AsyncCrawlerProcess
+   :show-inheritance:
+   :members:
+   :inherited-members:
 
-        Start the crawler. This calls :meth:`configure` if it hasn't been called yet.
+.. autoclass:: CrawlerProcess
+   :show-inheritance:
+   :members:
+   :inherited-members:
+
+.. _topics-api-settings:
 
 Settings API
 ============
 
 .. module:: scrapy.settings
-   :synopsis: Settings manager
 
-.. class:: Settings()
+.. attribute:: SETTINGS_PRIORITIES
 
-    This object that provides access to Scrapy settings.
+    Dictionary that sets the key name and priority level of the default
+    settings priorities used in Scrapy.
 
-    .. attribute:: overrides
+    Each item defines a settings entry point, giving it a code name for
+    identification and an integer priority. Greater priorities take more
+    precedence over lesser ones when setting and retrieving values in the
+    :class:`~scrapy.settings.Settings` class.
 
-       Global overrides are the ones that take most precedence, and are usually
-       populated by command-line options.
+    .. code-block:: python
 
-       Overrides should be populated *before* configuring the Crawler object
-       (through the :meth:`~scrapy.crawler.Crawler.configure` method),
-       otherwise they won't have any effect. You don't typically need to worry
-       about overrides unless you are implementing your own Scrapy command.
+        SETTINGS_PRIORITIES = {
+            "default": 0,
+            "command": 10,
+            "addon": 15,
+            "project": 20,
+            "spider": 30,
+            "cmdline": 40,
+        }
 
-    .. method:: get(name, default=None)
+    For a detailed explanation on each settings sources, see:
+    :ref:`topics-settings`.
 
-       Get a setting value without affecting its original type.
+.. autofunction:: get_settings_priority
 
-       :param name: the setting name
-       :type name: string
+.. autofunction:: scrapy.utils.project.get_project_settings
 
-       :param default: the value to return if no setting is found
-       :type default: any
+.. autoclass:: Settings
+   :show-inheritance:
+   :members:
 
-    .. method:: getbool(name, default=False)
+.. autoclass:: BaseSettings
+   :members:
 
-       Get a setting value as a boolean. For example, both ``1`` and ``'1'``, and
-       ``True`` return ``True``, while ``0``, ``'0'``, ``False`` and ``None``
-       return ``False````
+.. _topics-api-spiderloader:
 
-       For example, settings populated through environment variables set to ``'0'``
-       will return ``False`` when using this method.
+SpiderLoader API
+================
 
-       :param name: the setting name
-       :type name: string
+.. module:: scrapy.spiderloader
 
-       :param default: the value to return if no setting is found
-       :type default: any
+Custom spider loaders can be employed by specifying their path in the
+:setting:`SPIDER_LOADER_CLASS` project setting. They must implement
+:class:`SpiderLoaderProtocol`.
 
-    .. method:: getint(name, default=0)
+.. autoclass:: SpiderLoaderProtocol
+    :members:
 
-       Get a setting value as an int
+.. autoclass:: SpiderLoader
+    :members:
 
-       :param name: the setting name
-       :type name: string
-
-       :param default: the value to return if no setting is found
-       :type default: any
-
-    .. method:: getfloat(name, default=0.0)
-
-       Get a setting value as a float
-
-       :param name: the setting name
-       :type name: string
-
-       :param default: the value to return if no setting is found
-       :type default: any
-
-    .. method:: getlist(name, default=None)
-
-       Get a setting value as a list. If the setting original type is a list it
-       will be returned verbatim. If it's a string it will be split by ",".
-
-       For example, settings populated through environment variables set to
-       ``'one,two'`` will return a list ['one', 'two'] when using this method.
-
-       :param name: the setting name
-       :type name: string
-
-       :param default: the value to return if no setting is found
-       :type default: any
+.. autoclass:: DummySpiderLoader
 
 .. _topics-api-signals:
 
 Signals API
 ===========
 
-.. module:: scrapy.signalmanager
-   :synopsis: The signal manager
-
-.. class:: SignalManager
-
-    .. method:: connect(receiver, signal)
-
-        Connect a receiver function to a signal.
-
-        The signal can be any object, although Scrapy comes with some
-        predefined signals that are documented in the :ref:`topics-signals`
-        section.
-
-        :param receiver: the function to be connected
-        :type receiver: callable
-
-        :param signal: the signal to connect to
-        :type signal: object
-
-    .. method:: send_catch_log(signal, \*\*kwargs)
-
-        Send a signal, catch exceptions and log them.
-
-        The keyword arguments are passed to the signal handlers (connected
-        through the :meth:`connect` method).
-
-    .. method:: send_catch_log_deferred(signal, \*\*kwargs)
-
-        Like :meth:`send_catch_log` but supports returning `deferreds`_ from
-        signal handlers.
-
-        Returns a `deferred`_ that gets fired once all signal handlers
-        deferreds were fired. Send a signal, catch exceptions and log them.
-
-        The keyword arguments are passed to the signal handlers (connected
-        through the :meth:`connect` method).
-
-    .. method:: disconnect(receiver, signal)
-
-        Disconnect a receiver function from a signal. This has the opposite
-        effect of the :meth:`connect` method, and the arguments are the same.
-
-    .. method:: disconnect_all(signal)
-
-        Disconnect all receivers from the given signal.
-
-        :param signal: the signal to disconnect from
-        :type signal: object
+.. automodule:: scrapy.signalmanager
+    :members:
+    :undoc-members:
 
 .. _topics-api-stats:
 
@@ -241,63 +200,16 @@ Stats Collector API
 ===================
 
 There are several Stats Collectors available under the
-:mod:`scrapy.statscol` module and they all implement the Stats
-Collector API defined by the :class:`~scrapy.statscol.StatsCollector`
+:mod:`scrapy.statscollectors` module and they all implement the Stats
+Collector API defined by the :class:`~scrapy.statscollectors.StatsCollector`
 class (which they all inherit from).
 
-.. module:: scrapy.statscol
-   :synopsis: Stats Collectors
+Engine API
+==========
 
-.. class:: StatsCollector
+.. autoclass:: scrapy.core.engine.ExecutionEngine()
+   :members: close_spider_async, needs_backout, response_active_size, running,
+      scheduler, state
 
-    .. method:: get_value(key, default=None)
-
-        Return the value for the given stats key or default if it doesn't exist.
-
-    .. method:: get_stats()
-
-        Get all stats from the currently running spider as a dict.
-
-    .. method:: set_value(key, value)
-
-        Set the given value for the given stats key.
-
-    .. method:: set_stats(stats)
-
-        Override the current stats with the dict passed in ``stats`` argument.
-
-    .. method:: inc_value(key, count=1, start=0)
-
-        Increment the value of the given stats key, by the given count,
-        assuming the start value given (when it's not set).
-
-    .. method:: max_value(key, value)
-
-        Set the given value for the given key only if current value for the
-        same key is lower than value. If there is no current value for the
-        given key, the value is always set. 
-
-    .. method:: min_value(key, value)
-
-        Set the given value for the given key only if current value for the
-        same key is greater than value. If there is no current value for the
-        given key, the value is always set.
-
-    .. method:: clear_stats()
-
-        Clear all stats.
-
-    The following methods are not part of the stats collection api but instead
-    used when implementing custom stats collectors:
-
-    .. method:: open_spider(spider)
-
-        Open the given spider for stats collection.
-
-    .. method:: close_spider(spider)
-
-        Close the given spider. After this is called, no more specific stats
-        can be accessed or collected.
-
-.. _deferreds: http://twistedmatrix.com/documents/current/core/howto/defer.html
-.. _deferred: http://twistedmatrix.com/documents/current/core/howto/defer.html
+.. autoclass:: scrapy.core.engine.EngineState
+   :members:

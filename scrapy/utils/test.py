@@ -2,73 +2,122 @@
 This module contains some assorted functions used in tests
 """
 
-import os, sys
+from __future__ import annotations
 
-from twisted.trial.unittest import SkipTest
+import asyncio
+import os
+import warnings
+from importlib import import_module
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
-def libxml2debug(testfunction):
-    """Decorator for debugging libxml2 memory leaks inside a function.
-    
-    We've found libxml2 memory leaks are something very weird, and can happen
-    sometimes depending on the order where tests are run. So this decorator
-    enables libxml2 memory leaks debugging only when the environment variable
-    LIBXML2_DEBUGLEAKS is set.
+from twisted.web.client import Agent
 
-    """
-    try:
-        import libxml2
-    except ImportError:
-        return testfunction
-    def newfunc(*args, **kwargs):
-        libxml2.debugMemory(1)
-        testfunction(*args, **kwargs)
-        libxml2.cleanupParser()
-        leaked_bytes = libxml2.debugMemory(0) 
-        assert leaked_bytes == 0, "libxml2 memory leak detected: %d bytes" % leaked_bytes
+from scrapy.crawler import AsyncCrawlerRunner, CrawlerRunner, CrawlerRunnerBase
+from scrapy.exceptions import ScrapyDeprecationWarning
+from scrapy.utils.reactor import _is_asyncio_reactor_installed, is_reactor_installed
+from scrapy.utils.spider import DefaultSpider
 
-    if 'LIBXML2_DEBUGLEAKS' in os.environ:
-        return newfunc
-    else:
-        return testfunction
+if TYPE_CHECKING:
+    from collections.abc import Awaitable
 
-def assert_aws_environ():
-    """Asserts the current environment is suitable for running AWS testsi.
-    Raises SkipTest with the reason if it's not.
-    """
-    try:
-        import boto
-    except ImportError, e:
-        raise SkipTest(str(e))
+    from twisted.internet.defer import Deferred
+    from twisted.web.client import Response as TxResponse
 
-    if 'AWS_ACCESS_KEY_ID' not in os.environ:
-        raise SkipTest("AWS keys not found")
-
-def get_crawler(settings_dict=None):
-    """Return an unconfigured Crawler object. If settings_dict is given, it
-    will be used as the settings present in the settings module of the
-    CrawlerSettings.
-    """
+    from scrapy import Spider
     from scrapy.crawler import Crawler
-    from scrapy.settings import CrawlerSettings
 
-    class SettingsModuleMock(object):
-        pass
-    settings_module = SettingsModuleMock()
-    if settings_dict:
-        for k, v in settings_dict.items():
-            setattr(settings_module, k, v)
-    settings = CrawlerSettings(settings_module)
-    return Crawler(settings)
 
-def get_pythonpath():
+_T = TypeVar("_T")
+
+
+def get_reactor_settings() -> dict[str, Any]:
+    """Return a settings dict that works with the installed reactor.
+
+    ``Crawler._apply_settings()`` checks that the installed reactor matches the
+    settings, so tests that run the crawler in the current process may need to
+    pass a correct :setting:`TWISTED_REACTOR` setting value when creating it.
+    """
+    settings: dict[str, Any] = {}
+    if is_reactor_installed():
+        if not _is_asyncio_reactor_installed():
+            settings["TWISTED_REACTOR"] = None
+    else:
+        # We are either running Scrapy tests for the reactorless mode, or
+        # running some 3rd-party library tests for the reactorless mode, or
+        # running some 3rd-party library tests without initializing a reactor
+        # properly. The first two cases are fine, but we cannot distinguish the
+        # last one from them.
+        settings["TWISTED_REACTOR_ENABLED"] = False
+        settings["DOWNLOAD_HANDLERS"] = {
+            "ftp": "scrapy.core.downloader.handlers._aioftp.AioftpDownloadHandler",
+            "ftps": "scrapy.core.downloader.handlers._aioftp.AioftpDownloadHandler",
+            "http": "scrapy.core.downloader.handlers._aiohttp.AiohttpDownloadHandler",
+            "https": "scrapy.core.downloader.handlers._aiohttp.AiohttpDownloadHandler",
+        }
+    return settings
+
+
+def get_crawler(
+    spidercls: type[Spider] | None = None,
+    settings_dict: dict[str, Any] | None = None,
+    prevent_warnings: bool = True,
+) -> Crawler:
+    """Return an unconfigured Crawler object. If settings_dict is given, it
+    will be used to populate the crawler settings with a project level
+    priority.
+    """
+    # When needed, useful settings can be added here, e.g. ones that prevent
+    # deprecation warnings.
+    settings: dict[str, Any] = {
+        "FEED_MODE": "overwrite",
+        "REMOTE_CONTROL_ENABLED": False,
+        "TELNETCONSOLE_ENABLED": False,
+        **get_reactor_settings(),
+        **(settings_dict or {}),
+    }
+    runner: CrawlerRunnerBase
+    if is_reactor_installed():
+        runner = CrawlerRunner(settings)
+    else:
+        runner = AsyncCrawlerRunner(settings)
+    crawler = runner.create_crawler(spidercls or DefaultSpider)
+    crawler._apply_settings()
+    return crawler
+
+
+def get_pythonpath() -> str:
     """Return a PYTHONPATH suitable to use in processes so that they find this
     installation of Scrapy"""
-    sep = ';' if sys.platform == 'win32' else ':'
-    scrapy_path = __import__('scrapy').__path__[0]
-    return os.path.dirname(scrapy_path) + sep + os.environ.get('PYTHONPATH', '')
+    scrapy_path = import_module("scrapy").__path__[0]
+    return str(Path(scrapy_path).parent) + os.pathsep + os.environ.get("PYTHONPATH", "")
 
-def assert_samelines(testcase, text1, text2, msg=None):
-    """Asserts text1 and text2 have the same lines, ignoring differences in
-    line endings between platforms
+
+def get_testenv() -> dict[str, str]:
+    """Return a OS environment dict suitable to fork processes that need to import
+    this installation of Scrapy, instead of a system installed one.
     """
-    testcase.assertEqual(text1.splitlines(), text2.splitlines(), msg)
+    env = os.environ.copy()
+    env["PYTHONPATH"] = get_pythonpath()
+    return env
+
+
+def get_from_asyncio_queue(value: _T) -> Awaitable[_T]:
+    q: asyncio.Queue[_T] = asyncio.Queue()
+    getter = q.get()
+    q.put_nowait(value)
+    return getter
+
+
+def get_web_client_agent_req(url: str) -> Deferred[TxResponse]:  # pragma: no cover
+    warnings.warn(
+        "The get_web_client_agent_req() function is deprecated"
+        " and will be removed in a future version of Scrapy.",
+        category=ScrapyDeprecationWarning,
+        stacklevel=2,
+    )
+
+    from twisted.internet import reactor
+
+    agent = Agent(reactor)
+    return cast("Deferred[TxResponse]", agent.request(b"GET", url.encode()))

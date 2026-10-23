@@ -1,49 +1,41 @@
 """
-Scrapy - a screen scraping framework written in Python
+Scrapy - a web crawling and web scraping framework written for Python
 """
 
-version_info = (0, 17, 0)
-__version__ = "0.17.0"
+import sys
+import warnings
+from importlib.resources import files
 
-import sys, os, warnings
+# Declare top-level shortcuts
+from scrapy._logging import LogRootFormatter, LogRootFormatterProtocol
+from scrapy.http import FormRequest, Request
+from scrapy.item import Field, Item
+from scrapy.selector import Selector
+from scrapy.spiders import Spider
 
-if sys.version_info < (2,6):
-    print "Scrapy %s requires Python 2.6 or above" % __version__
-    sys.exit(1)
+__all__ = [
+    "Field",
+    "FormRequest",
+    "Item",
+    "LogRootFormatter",
+    "LogRootFormatterProtocol",
+    "Request",
+    "Selector",
+    "Spider",
+    "__version__",
+    "version_info",
+]
 
-# ignore noisy twisted deprecation warnings
-warnings.filterwarnings('ignore', category=DeprecationWarning, module='twisted')
 
-# monkey patches to fix external library issues
-from scrapy.xlib import urlparse_monkeypatches
+# Scrapy and Twisted versions
+__version__ = files("scrapy").joinpath("VERSION").read_text(encoding="ascii").strip()
+version_info = tuple(int(v) if v.isdigit() else v for v in __version__.split("."))
 
-# optional_features is a set containing Scrapy optional features
-optional_features = set()
 
-try:
-    import OpenSSL
-except ImportError:
-    pass
-else:
-    optional_features.add('ssl')
+# Ignore noisy twisted deprecation warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="twisted")
 
-try:
-    import boto
-except ImportError:
-    pass
-else:
-    optional_features.add('boto')
 
-try:
-    import libxml2
-except ImportError:
-    pass
-else:
-    optional_features.add('libxml2')
-
-try:
-    import django
-except ImportError:
-    pass
-else:
-    optional_features.add('django')
+del files
+del sys
+del warnings
