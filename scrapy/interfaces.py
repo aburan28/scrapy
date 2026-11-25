@@ -1,15 +1,23 @@
+# pragma: no file cover
+# pylint: disable=no-method-argument,no-self-argument
+import warnings
+
 from zope.interface import Interface
 
-class ISpiderManager(Interface):
+from scrapy.exceptions import ScrapyDeprecationWarning
 
-    def create(spider_name, **spider_args):
-        """Returns a new Spider instance for the given spider name, and using
-        the given spider arguments. If the spider name is not found, it must
-        raise a KeyError."""
+warnings.warn(
+    "The scrapy.interfaces module is deprecated.",
+    ScrapyDeprecationWarning,
+    stacklevel=2,
+)
 
-    def list():
-        """Return a list with the names of all spiders available in the
-        project"""
 
-    def find_by_request(request):
-        """Returns the list of spiders names that can handle the given request"""
+class ISpiderLoader(Interface):
+    def from_settings(settings): ...
+
+    def load(spider_name): ...
+
+    def list(): ...
+
+    def find_by_request(request): ...

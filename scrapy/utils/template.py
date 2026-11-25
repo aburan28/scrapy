@@ -1,29 +1,21 @@
-"""Helper functions for working with templates"""
+# pragma: no file cover
+import warnings
 
-import os
-import re
-import string
+from scrapy.exceptions import ScrapyDeprecationWarning
+from scrapy.utils._template import (
+    CAMELCASE_INVALID_CHARS,
+    render_templatefile,
+    string_camelcase,
+)
 
-def render_templatefile(path, **kwargs):
-    with open(path, 'rb') as file:
-        raw = file.read()
+warnings.warn(
+    "The scrapy.utils.template module is deprecated.",
+    ScrapyDeprecationWarning,
+    stacklevel=2,
+)
 
-    content = string.Template(raw).substitute(**kwargs)
-
-    with open(path.rstrip('.tmpl'), 'wb') as file:
-        file.write(content)
-    if path.endswith('.tmpl'):
-        os.remove(path)
-
-CAMELCASE_INVALID_CHARS = re.compile('[^a-zA-Z\d]')
-def string_camelcase(string):
-    """ Convert a word  to its CamelCase version and remove invalid chars
-
-    >>> string_camelcase('lost-pound')
-    'LostPound'
-
-    >>> string_camelcase('missing_images')
-    'MissingImages'
-
-    """
-    return CAMELCASE_INVALID_CHARS.sub('', string.title())
+__all__ = [
+    "CAMELCASE_INVALID_CHARS",
+    "render_templatefile",
+    "string_camelcase",
+]
